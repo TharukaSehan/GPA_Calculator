@@ -41,7 +41,7 @@ def prompt_course() -> tuple[str, int, str]:
         print("    Please enter a valid integer for credits.")
 
     while True:
-        grade = input("  Grade (A+, A, A-, ... F): ").upper().strip()
+        grade = input("  Grade (A+, A, A-, B+, B, B-, C+, C, C-, D+, D, F): ").upper().strip()
         if grade in GRADE_POINTS:
             break
         print("    Invalid grade; try again.")
@@ -76,7 +76,7 @@ def main() -> None:
         courses.append((subj, creds, grd))
 
     if not courses:
-        print("No courses entered. Goodbye.")
+        print("No courses entered.")
         return
 
     gpa = calculate_gpa(courses)
