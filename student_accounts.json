@@ -1,0 +1,109 @@
+{
+  "tharuka": {
+    "salt": "9a59eb973cc11d93f3ade186a064d65b",
+    "password_hash": "9285cfc01d822040adc286cc22a81d5682d36b90ac75104873aa9a28395e0b06",
+    "program": "CIS",
+    "state": {
+      "program": "CIS",
+      "weights": [
+        0.2,
+        0.2,
+        0.3,
+        0.3
+      ],
+      "semesters": [
+        {
+          "id": "cb624276c2e44213a627dbd2cd11cdd0",
+          "number": 1,
+          "collapsed": false,
+          "rows": [
+            {
+              "id": "967abe2f641a45cd81dab169fe171e6a",
+              "course": "IS1101 - Fundamentals of Information Systems",
+              "grade": "A",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "52961556d04848fb909e96196ff02098",
+              "course": "IS1102 - Structured Programming Techniques",
+              "grade": "A",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "11bfad9a1052434c9cd63cb003cc1cdf",
+              "course": "IS1103 - Structured Programming Practicum",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "8a32eadbc5df4b559845a3a03b0eafe1",
+              "course": "IS1104 - Theories of Information Systems",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "c08cbb6fdad242dca076deab38daf0d1",
+              "course": "IS1105 - Computer System Organization",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "bbc53435ed274858807d6f35ef21a6dd",
+              "course": "IS1106 - Foundations of Web Technologies",
+              "grade": "A",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "d5bc274d83634ceeb17feecf15583005",
+              "course": "IS1107 - Personal Productivity with Information Technology",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "059ed9cb47df4fd7b99d64f67692f655",
+              "course": "IS1108 - Fundamentals of Mathematics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "38ab8b063c9449968bba07984e42e46c",
+              "course": "IS1109 - Statistics and Probability Theory",
+              "grade": "A-",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "e6514dea525849c9bdb7abc222520400",
+              "course": "IS1110 - Communication Skills I",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            },
+            {
+              "id": "f7c42fae5107485492aed99d4df72207",
+              "course": "IS1111 - Academic Integrity",
+              "grade": "C-",
+              "credits": 1,
+              "nonGpa": true
+            },
+            {
+              "id": "adfec20db88f47ca82568974ec721722",
+              "course": "IS-EGP-1101 - General English I",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            }
+          ]
+        }
+      ]
+    }
+  }
+}
