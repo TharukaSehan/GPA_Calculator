@@ -20,49 +20,49 @@
             {
               "id": "967abe2f641a45cd81dab169fe171e6a",
               "course": "IS1101 - Fundamentals of Information Systems",
-              "grade": "A",
+              "grade": "A-",
               "credits": 2,
               "nonGpa": false
             },
             {
               "id": "52961556d04848fb909e96196ff02098",
               "course": "IS1102 - Structured Programming Techniques",
-              "grade": "A",
+              "grade": "B",
               "credits": 2,
               "nonGpa": false
             },
             {
               "id": "11bfad9a1052434c9cd63cb003cc1cdf",
               "course": "IS1103 - Structured Programming Practicum",
-              "grade": "--",
+              "grade": "A",
               "credits": 1,
               "nonGpa": false
             },
             {
               "id": "8a32eadbc5df4b559845a3a03b0eafe1",
               "course": "IS1104 - Theories of Information Systems",
-              "grade": "--",
+              "grade": "A",
               "credits": 2,
               "nonGpa": false
             },
             {
               "id": "c08cbb6fdad242dca076deab38daf0d1",
               "course": "IS1105 - Computer System Organization",
-              "grade": "--",
+              "grade": "A-",
               "credits": 2,
               "nonGpa": false
             },
             {
               "id": "bbc53435ed274858807d6f35ef21a6dd",
               "course": "IS1106 - Foundations of Web Technologies",
-              "grade": "A",
+              "grade": "B+",
               "credits": 2,
               "nonGpa": false
             },
             {
               "id": "d5bc274d83634ceeb17feecf15583005",
               "course": "IS1107 - Personal Productivity with Information Technology",
-              "grade": "--",
+              "grade": "B+",
               "credits": 1,
               "nonGpa": false
             },
@@ -102,8 +102,355 @@
               "nonGpa": true
             }
           ]
+        },
+        {
+          "id": "b6a12f38-7032-4dfc-a1bf-9bd167842c4b",
+          "number": 2,
+          "collapsed": false,
+          "rows": [
+            {
+              "id": "2b0a7afa-defd-4906-a017-6d2d57f85da5",
+              "course": "IS2101 - Object Oriented Programming",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "9e5c8b65-35a6-4910-8651-49986d243046",
+              "course": "IS2102 - Object Oriented Programming Practicum",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "274c6bef-9569-4946-a323-fe44f9b4cb2b",
+              "course": "IS2103 - Emerging IS Technologies",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "3891a71a-e720-4ef1-8d14-c41ab983d38c",
+              "course": "IS2104 - Database Systems",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "eec4a133-cbf3-450b-8b98-125d81fca1d8",
+              "course": "IS2105 - Database Management Systems Practicum",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "83bce7b9-728f-4e21-836f-19b6f99ba299",
+              "course": "IS2106 - System Analysis and Design",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "ed10759f-ba3a-479b-9c1e-a0634da63eaa",
+              "course": "IS2107 - Social and Professional Issues",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "08f0c3aa-7ca3-4d71-9556-ae64a9eff467",
+              "course": "IS2108 - Human Computer Interaction",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "aca084b3-bdc8-4a38-b019-58d1e1f6a941",
+              "course": "IS2109 - Information Assurance and Security",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "9e0c2e43-b0c7-4f7c-a840-943f416cedda",
+              "course": "IS2110 - Software Project Initiation and Planning",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "44bb0f67-5871-4d1d-b1fd-0225a03a6e56",
+              "course": "IS2111 - Advanced Mathematics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "a0d012bf-9d98-473a-bdb2-a8240347e763",
+              "course": "IS2112 - Communication Skills II",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            },
+            {
+              "id": "f428c6ad-806a-432e-ba7f-3fe34aa48af9",
+              "course": "IS-EGP-1201 - General English II",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            }
+          ]
+        },
+        {
+          "id": "d6ca3229-295d-4757-83cf-c0743118b66b",
+          "number": 3,
+          "collapsed": false,
+          "rows": [
+            {
+              "id": "299e8d6a-9615-4a05-8187-7939c78006de",
+              "course": "IS3101 - Object Oriented Analysis and Design",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "51a3934b-1f0d-4c4a-87e0-e6e5af08bc0e",
+              "course": "IS3102 - Data Structures and Algorithms",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "450c775e-268d-4523-ae00-6b182894df73",
+              "course": "IS3103 - IT Governance",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "59f1caaf-3dd9-4f39-ae0d-8f571783f230",
+              "course": "IS3104 - Software Engineering",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "8955b1ed-a256-4b53-b174-65fa4b9b556c",
+              "course": "IS3105 - IS Risk Management",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "c58c2cb6-7975-4786-84ac-b097d3156037",
+              "course": "IS3106 - IS Sustainability",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "d5a116d7-b164-4490-98bc-f40918525ab1",
+              "course": "IS3107 - Management Information Systems",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "10ab7533-d803-4c64-aa7a-4aba226a9b66",
+              "course": "IS3108 - E-Business",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": false
+            },
+            {
+              "id": "916a21a4-cf96-4bd6-a5cb-f73dadae9ea2",
+              "course": "IS3109 - Digital Innovation",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "9a414e44-10c2-45a7-ac0b-c6d43a5dff44",
+              "course": "IS-EAP-2101 - Academic English I",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            }
+          ]
         }
       ]
     }
+  },
+  "paruka": {
+    "salt": "530d353fa0898b0c8201ec139fc924ae",
+    "password_hash": "4c296444d65a6d0bf75b5e3fc1dbca77cf3403d3d366f1e82e059e3d2d1dce98",
+    "program": "SE",
+    "state": {
+      "program": "SE",
+      "weights": [
+        0.2,
+        0.2,
+        0.3,
+        0.3
+      ],
+      "semesters": [
+        {
+          "id": "2ccf2a2cf0f047cbade2f5762a98b443",
+          "number": 1,
+          "collapsed": false,
+          "rows": [
+            {
+              "id": "b89908bf90564fab9ff46cacd4e2894c",
+              "course": "SE1101 - Computer Organization",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "f4f4b706e4734f638a3f82cd3e77c20a",
+              "course": "SE1102 - Programming Fundamentals",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "06d01f04e8cc4e2aad0cac6801e15338",
+              "course": "SE1103 - Requirements Fundamentals",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "f834060fcf034233b3ac34a17732853a",
+              "course": "SE1104 - Software Process Concepts",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "a71a2e08b29a49fc96c956d2875f523c",
+              "course": "SE1105 - Social and Professional Issues",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "797647257d41429a800877183caf8dfa",
+              "course": "SE1106 - Fundamentals of Mathematics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "2d390b41740a467184737e9710082db1",
+              "course": "SE1107 - Fundamentals of Statistics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "7c506ea99e25429dab57ab1a7adbf557",
+              "course": "SE1108 - Communication Skills I",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            },
+            {
+              "id": "ec4d8e89cd6f4db9a3e0941d068158f7",
+              "course": "SE1109 - Academic Integrity",
+              "grade": "--",
+              "credits": 1,
+              "nonGpa": true
+            },
+            {
+              "id": "cb642e34240245e48630411876587857",
+              "course": "SE-EGP-1101 - General English I",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            }
+          ]
+        },
+        {
+          "id": "f81917e8-99c8-407a-b368-dd592763b2b2",
+          "number": 2,
+          "collapsed": false,
+          "rows": [
+            {
+              "id": "d37be801-ba5b-4233-bce8-65ff68c1aa9d",
+              "course": "SE2101 - Algorithms, Data Structures, and Complexity",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "41009463-3293-4f31-8b04-131f83fc7087",
+              "course": "SE2102 - Database Management Systems",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "029a1a6e-ab1e-4cf3-a4ff-b6a511301483",
+              "course": "SE2103 - Operating Systems Basics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "024d26b9-17f3-43a4-a97e-92918b074172",
+              "course": "SE2104 - Object Oriented Programming",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "5537411c-f206-4209-8597-093defb34095",
+              "course": "SE2105 - Requirement Specification and Documentation",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "76a87231-bea1-4cf3-9e44-3a602f8a56d2",
+              "course": "SE2106 - Software Process Implementation",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "8fe731e2-646c-4eee-9b37-427e0593f390",
+              "course": "SE2107 - Analysis Fundamentals",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "94e5713d-9e3a-42f4-8cc4-bc414bf4ed89",
+              "course": "SE2108 - Advanced Mathematics",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": false
+            },
+            {
+              "id": "b6644596-bcd1-46f2-b6de-32f8073e85b4",
+              "course": "SE2109 - Communication Skills II",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            },
+            {
+              "id": "aabb459a-bb3d-4247-826d-544b9432a69e",
+              "course": "SE-EGP-1201 - General English II",
+              "grade": "--",
+              "credits": 2,
+              "nonGpa": true
+            }
+          ]
+        }
+      ]
+    },
+    "full_name": "hgfgfjffh",
+    "student_id": "45u55"
   }
 }

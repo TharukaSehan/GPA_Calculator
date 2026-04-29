@@ -1,0 +1,8 @@
+{
+  "admin": {
+    "salt": "59b86c4db74ee94eb992f5ae1d54f888",
+    "password_hash": "c85a700bc850e53026a3dbee544b5bf4f7b2745e3c88d8780ffdc8f576739021",
+    "program": null,
+    "state": null
+  }
+}

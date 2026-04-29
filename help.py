@@ -253,8 +253,10 @@ PROGRAMS = {
 
 
 USERS_PATH = Path(__file__).with_name("student_accounts.json")
+ADMIN_PATH = Path(__file__).with_name("admin_accounts.json")
 USERS_LOCK = threading.Lock()
-SESSIONS: dict[str, str] = {}
+SESSIONS: dict[str, str] = {}  # token -> username (student)
+ADMIN_SESSIONS: dict[str, str] = {}  # token -> admin_username
 
 
 def load_users() -> dict[str, Any]:
@@ -292,9 +294,33 @@ def verify_password(password: str, user: dict[str, Any]) -> bool:
     return hmac.compare_digest(expected, actual)
 
 
+def load_admins() -> dict[str, Any]:
+    if not ADMIN_PATH.exists():
+        # Initialize with default admin if file doesn't exist
+        default = {
+            "admin": create_user_record("admin123")
+        }
+        ADMIN_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
+        return default
+    try:
+        return json.loads(ADMIN_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def save_admins(admins: dict[str, Any]) -> None:
+    ADMIN_PATH.write_text(json.dumps(admins, indent=2), encoding="utf-8")
+
+
 def new_token(username: str) -> str:
     token = uuid.uuid4().hex
     SESSIONS[token] = username
+    return token
+
+
+def new_admin_token(admin_username: str) -> str:
+    token = uuid.uuid4().hex
+    ADMIN_SESSIONS[token] = admin_username
     return token
 
 
@@ -349,6 +375,13 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
 
 
 class GPAHandler(BaseHTTPRequestHandler):
+    def _auth_admin_username(self) -> str | None:
+        auth = self.headers.get("Authorization", "")
+        if not auth.startswith("Bearer "):
+            return None
+        token = auth.removeprefix("Bearer ").strip()
+        return ADMIN_SESSIONS.get(token)
+
     def _send_json(self, status: int, payload: dict[str, Any]) -> None:
         body = json.dumps(payload).encode("utf-8")
         self.send_response(status)
@@ -374,135 +407,260 @@ class GPAHandler(BaseHTTPRequestHandler):
         return SESSIONS.get(token)
 
     def do_GET(self) -> None:  # noqa: N802
-        if self.path in {"/", "/index.html"}:
-            self._send_html()
-            return
+      if self.path in {"/", "/index.html"}:
+        self._send_html()
+        return
 
-        if self.path == "/api/me":
-            username = self._auth_username()
-            if not username:
-                self._send_json(401, {"ok": False, "message": "Unauthorized"})
-                return
-            with USERS_LOCK:
-                users = load_users()
-                user = users.get(username)
-            if not user:
-                self._send_json(404, {"ok": False, "message": "User not found"})
-                return
-            self._send_json(
-                200,
-                {
-                    "ok": True,
-                    "username": username,
-                    "program": user.get("program"),
-                    "state": user.get("state"),
-                },
-            )
-            return
+      if self.path == "/admin":
+        html = build_admin_html().encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(html)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(html)
+        return
 
-        self.send_error(404, "Not found")
+      if self.path == "/admin/login.html":
+        html = build_admin_login_html().encode("utf-8")
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(html)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(html)
+        return
+
+      if self.path == "/api/me":
+        username = self._auth_username()
+        if not username:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          user = users.get(username)
+        if not user:
+          self._send_json(404, {"ok": False, "message": "User not found"})
+          return
+        self._send_json(
+          200,
+          {
+            "ok": True,
+            "username": username,
+            "program": user.get("program"),
+            "state": user.get("state"),
+            "full_name": user.get("full_name", ""),
+            "student_id": user.get("student_id", ""),
+          },
+        )
+        return
+
+      if self.path == "/api/admin/stats":
+        admin = self._auth_admin_username()
+        if not admin:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        with USERS_LOCK:
+          users = load_users()
+        total = len(users)
+        with_program = sum(1 for u in users.values() if u.get("program"))
+        self._send_json(200, {"ok": True, "total_students": total, "with_program": with_program})
+        return
+
+      if self.path == "/api/admin/students":
+        admin = self._auth_admin_username()
+        if not admin:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        with USERS_LOCK:
+          users = load_users()
+        students = []
+        for username, user in users.items():
+          students.append({
+            "username": username,
+            "program": user.get("program") or "Not Selected",
+            "full_name": user.get("full_name", "-"),
+            "student_id": user.get("student_id", "-"),
+            "has_progress": bool(user.get("state")),
+          })
+        self._send_json(200, {"ok": True, "students": sorted(students, key=lambda x: x["username"])})
+        return
+
+      if self.path == "/api/admin/logout":
+        auth = self.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+        if token and token in ADMIN_SESSIONS:
+          del ADMIN_SESSIONS[token]
+        self._send_json(200, {"ok": True})
+        return
+
+      self.send_error(404, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
-        if self.path == "/api/register":
-            body = read_json_body(self) or {}
-            username = str(body.get("username", "")).strip().lower()
-            password = str(body.get("password", ""))
-            if len(username) < 3 or len(password) < 6:
-                self._send_json(400, {"ok": False, "message": "Username must be at least 3 chars and password at least 6 chars."})
-                return
-            with USERS_LOCK:
-                users = load_users()
-                if username in users:
-                    self._send_json(409, {"ok": False, "message": "Account already exists."})
-                    return
-                users[username] = create_user_record(password)
-                save_users(users)
-            token = new_token(username)
-            self._send_json(200, {"ok": True, "token": token, "username": username, "program": None, "state": None})
-            return
+      if self.path == "/api/admin-login":
+        body = read_json_body(self) or {}
+        username = str(body.get("username", "")).strip().lower()
+        password = str(body.get("password", ""))
+        with USERS_LOCK:
+          admins = load_admins()
+          admin = admins.get(username)
+        if not admin or not verify_password(password, admin):
+          self._send_json(401, {"ok": False, "message": "Invalid admin credentials."})
+          return
+        token = new_admin_token(username)
+        self._send_json(200, {"ok": True, "token": token, "admin_username": username})
+        return
 
-        if self.path == "/api/login":
-            body = read_json_body(self) or {}
-            username = str(body.get("username", "")).strip().lower()
-            password = str(body.get("password", ""))
-            with USERS_LOCK:
-                users = load_users()
-                user = users.get(username)
-            if not user or not verify_password(password, user):
-                self._send_json(401, {"ok": False, "message": "Invalid username or password."})
-                return
-            token = new_token(username)
-            self._send_json(
-                200,
-                {
-                    "ok": True,
-                    "token": token,
-                    "username": username,
-                    "program": user.get("program"),
-                    "state": user.get("state"),
-                },
-            )
+      if self.path == "/api/register":
+        body = read_json_body(self) or {}
+        username = str(body.get("username", "")).strip().lower()
+        password = str(body.get("password", ""))
+        if len(username) < 3 or len(password) < 6:
+          self._send_json(400, {"ok": False, "message": "Username must be at least 3 chars and password at least 6 chars."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          if username in users:
+            self._send_json(409, {"ok": False, "message": "Account already exists."})
             return
+          users[username] = create_user_record(password)
+          users[username]["full_name"] = str(body.get("full_name", "")).strip()
+          users[username]["student_id"] = str(body.get("student_id", "")).strip()
+          save_users(users)
+        token = new_token(username)
+        self._send_json(200, {"ok": True, "token": token, "username": username, "program": None, "state": None, "full_name": users[username].get("full_name", ""), "student_id": users[username].get("student_id", "")})
+        return
 
-        if self.path == "/api/set-program":
-            username = self._auth_username()
-            if not username:
-                self._send_json(401, {"ok": False, "message": "Unauthorized"})
-                return
-            body = read_json_body(self) or {}
-            program = str(body.get("program", "")).strip().upper()
-            if program not in PROGRAMS:
-                self._send_json(400, {"ok": False, "message": "Unknown program."})
-                return
-            with USERS_LOCK:
-                users = load_users()
-                user = users.get(username)
-                if not user:
-                    self._send_json(404, {"ok": False, "message": "User not found"})
-                    return
-                user["program"] = program
-                if user.get("state") is None:
-                    user["state"] = build_default_state(program)
-                else:
-                    user["state"]["program"] = program
-                users[username] = user
-                save_users(users)
-            self._send_json(200, {"ok": True, "program": program, "state": users[username]["state"]})
+      if self.path == "/api/login":
+        body = read_json_body(self) or {}
+        username = str(body.get("username", "")).strip().lower()
+        password = str(body.get("password", ""))
+        with USERS_LOCK:
+          users = load_users()
+          user = users.get(username)
+        if not user or not verify_password(password, user):
+          self._send_json(401, {"ok": False, "message": "Invalid username or password."})
+          return
+        token = new_token(username)
+        self._send_json(200, {"ok": True, "token": token, "username": username, "program": user.get("program"), "state": user.get("state"), "full_name": user.get("full_name", ""), "student_id": user.get("student_id", "")})
+        return
+
+      if self.path == "/api/set-program":
+        username = self._auth_username()
+        if not username:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        body = read_json_body(self) or {}
+        program = str(body.get("program", "")).strip().upper()
+        if program not in PROGRAMS:
+          self._send_json(400, {"ok": False, "message": "Unknown program."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          user = users.get(username)
+          if not user:
+            self._send_json(404, {"ok": False, "message": "User not found"})
             return
+          user["program"] = program
+          if user.get("state") is None:
+            user["state"] = build_default_state(program)
+          else:
+            user["state"]["program"] = program
+          users[username] = user
+          save_users(users)
+        self._send_json(200, {"ok": True, "program": program, "state": users[username]["state"]})
+        return
 
-        if self.path == "/api/save-progress":
-            username = self._auth_username()
-            if not username:
-                self._send_json(401, {"ok": False, "message": "Unauthorized"})
-                return
-            body = read_json_body(self) or {}
-            state = body.get("state")
-            if not isinstance(state, dict):
-                self._send_json(400, {"ok": False, "message": "Invalid state payload."})
-                return
-            with USERS_LOCK:
-                users = load_users()
-                user = users.get(username)
-                if not user:
-                    self._send_json(404, {"ok": False, "message": "User not found"})
-                    return
-                user["state"] = state
-                if isinstance(state.get("program"), str):
-                    user["program"] = state["program"]
-                users[username] = user
-                save_users(users)
-            self._send_json(200, {"ok": True})
+      if self.path == "/api/save-progress":
+        username = self._auth_username()
+        if not username:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        body = read_json_body(self) or {}
+        state = body.get("state")
+        if not isinstance(state, dict):
+          self._send_json(400, {"ok": False, "message": "Invalid state payload."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          user = users.get(username)
+          if not user:
+            self._send_json(404, {"ok": False, "message": "User not found"})
             return
+          user["state"] = state
+          if isinstance(state.get("program"), str):
+            user["program"] = state["program"]
+          users[username] = user
+          save_users(users)
+        self._send_json(200, {"ok": True})
+        return
 
-        if self.path == "/api/logout":
-            auth = self.headers.get("Authorization", "")
-            token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
-            if token and token in SESSIONS:
-                del SESSIONS[token]
-            self._send_json(200, {"ok": True})
+      if self.path == "/api/logout":
+        auth = self.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+        if token and token in SESSIONS:
+          del SESSIONS[token]
+        self._send_json(200, {"ok": True})
+        return
+
+      admin_username = self._auth_admin_username()
+      if not admin_username:
+        self._send_json(401, {"ok": False, "message": "Unauthorized"})
+        return
+
+      if self.path == "/api/admin/change-password":
+        body = read_json_body(self) or {}
+        current_password = str(body.get("current_password", ""))
+        new_password = str(body.get("new_password", ""))
+        if len(new_password) < 6:
+          self._send_json(400, {"ok": False, "message": "New password must be at least 6 characters."})
+          return
+        with USERS_LOCK:
+          admins = load_admins()
+          admin = admins.get(admin_username)
+          if not admin or not verify_password(current_password, admin):
+            self._send_json(401, {"ok": False, "message": "Current password is incorrect."})
             return
+          admins[admin_username] = create_user_record(new_password)
+          save_admins(admins)
+        self._send_json(200, {"ok": True})
+        return
 
-        self.send_error(404, "Not found")
+      if self.path == "/api/admin/rename-student":
+        body = read_json_body(self) or {}
+        old_username = str(body.get("old_username", "")).strip().lower()
+        new_username = str(body.get("new_username", "")).strip().lower()
+        if len(old_username) < 3 or len(new_username) < 3:
+          self._send_json(400, {"ok": False, "message": "Both usernames must be at least 3 characters."})
+          return
+        if old_username == new_username:
+          self._send_json(400, {"ok": False, "message": "New username must be different."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          if old_username not in users:
+            self._send_json(404, {"ok": False, "message": "Student not found."})
+            return
+          if new_username in users:
+            self._send_json(409, {"ok": False, "message": "Username already exists."})
+            return
+          users[new_username] = users.pop(old_username)
+          save_users(users)
+          for token, session_username in list(SESSIONS.items()):
+            if session_username == old_username:
+              SESSIONS[token] = new_username
+        self._send_json(200, {"ok": True, "username": new_username})
+        return
+
+      if self.path == "/api/admin/logout":
+        auth = self.headers.get("Authorization", "")
+        token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
+        if token and token in ADMIN_SESSIONS:
+          del ADMIN_SESSIONS[token]
+        self._send_json(200, {"ok": True})
+        return
+
+      self.send_error(404, "Not found")
 
     def log_message(self, format: str, *args) -> None:  # noqa: A003
         return
@@ -575,6 +733,8 @@ HTML = """<!doctype html>
       </div>
       <form id="auth-form" class="auth-form">
         <input class="field" id="username" placeholder="Username" required />
+        <input class="field" id="full_name" placeholder="Full Name (optional)" style="display:none" />
+        <input class="field" id="student_id" placeholder="Student ID (optional)" style="display:none" />
         <input class="field" id="password" type="password" placeholder="Password (min 6 chars)" required />
         <button class="btn primary" id="auth-submit" type="submit">Login</button>
       </form>
@@ -611,6 +771,7 @@ HTML = """<!doctype html>
       <div>
         <div id="semesters"></div>
         <div class="actions">
+          <button class="btn primary" id="save-progress">Save Progress</button>
           <button class="btn primary" id="add-semester">+ Add Semester</button>
           <button class="btn ghost" id="change-program">Settings</button>
           <button class="btn ghost" id="reset">Reset</button>
@@ -663,6 +824,7 @@ HTML = """<!doctype html>
 
     let authMode = 'login';
     let token = '';
+    let profile = { full_name: '', student_id: '' };
     let username = '';
     let state = null;
     let saveTimer = null;
@@ -687,6 +849,8 @@ HTML = """<!doctype html>
       document.getElementById('tab-register').className = 'btn ' + (mode === 'register' ? 'primary' : 'ghost');
       document.getElementById('auth-submit').textContent = mode === 'login' ? 'Login' : 'Create Account';
       document.getElementById('auth-message').textContent = '';
+      document.getElementById('full_name').style.display = mode === 'register' ? '' : 'none';
+      document.getElementById('student_id').style.display = mode === 'register' ? '' : 'none';
     }
 
     function semesterRowsFor(program, number){
@@ -856,6 +1020,8 @@ HTML = """<!doctype html>
     async function afterLogin(payload){
       token = payload.token;
       username = payload.username;
+      profile.full_name = payload.full_name || '';
+      profile.student_id = payload.student_id || '';
       let loadedState = payload.state;
       let program = payload.program;
 
@@ -887,7 +1053,12 @@ HTML = """<!doctype html>
       const u = document.getElementById('username').value.trim().toLowerCase();
       const p = document.getElementById('password').value;
       const endpoint = authMode === 'login' ? '/api/login' : '/api/register';
-      const result = await api(endpoint, 'POST', { username: u, password: p });
+      const body = { username: u, password: p };
+      if (authMode === 'register'){
+        body.full_name = document.getElementById('full_name').value.trim();
+        body.student_id = document.getElementById('student_id').value.trim();
+      }
+      const result = await api(endpoint, 'POST', body);
       if (!result.ok){ document.getElementById('auth-message').textContent = result.message || 'Authentication failed.'; return; }
       await afterLogin(result);
     });
@@ -911,6 +1082,15 @@ HTML = """<!doctype html>
       if (next > 8) return;
       state.semesters.push({ id: uid(), number: next, collapsed: false, rows: semesterRowsFor(state.program, next) });
       render(); queueSave();
+    });
+
+    document.getElementById('save-progress').addEventListener('click', async () => {
+      if (!token || !state) return;
+      await api('/api/save-progress', 'POST', { state });
+      const n = document.getElementById('n-status');
+      const old = n.textContent;
+      n.textContent = 'Progress saved.';
+      setTimeout(() => { n.textContent = old; }, 1800);
     });
 
     document.getElementById('change-program').addEventListener('click', () => {
@@ -946,6 +1126,341 @@ def build_html() -> str:
         HTML.replace("__PROGRAMS__", json.dumps(PROGRAMS, ensure_ascii=True))
         .replace("__GRADE_POINTS__", json.dumps(GRADE_POINTS, ensure_ascii=True))
     )
+
+
+def build_admin_login_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Login - SUSL GPA Calculator</title>
+  <style>
+    :root { --bg:#f3f6fb; --panel:#fff; --ink:#17233b; --muted:#66768f; --line:#d8dfeb; --accent:#1e59e6; }
+    *{box-sizing:border-box} body{margin:0;font-family:'Trebuchet MS','Segoe UI',sans-serif;background:linear-gradient(180deg,#f8fbff,#edf2fb);color:var(--ink)}
+    .container{display:grid;place-items:center;min-height:100vh;padding:12px}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 28px rgba(18,40,86,.08);padding:32px;width:min(480px,100%)}
+    .panel h1{margin:0 0 20px;font-size:1.8rem}
+    .form{display:grid;gap:12px}
+    .field{width:100%;min-height:48px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff}
+    .btn{border:0;border-radius:12px;padding:12px 20px;font:inherit;font-weight:800;cursor:pointer;width:100%}
+    .btn.primary{background:linear-gradient(135deg,#2f64ec,#1749d3);color:#fff}
+    .message{min-height:20px;font-size:.9rem;color:#b42318;margin-top:12px}
+    .footer{margin-top:20px;text-align:center;font-size:.85rem;color:var(--muted)}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="panel">
+      <h1>Admin Login</h1>
+      <form class="form" id="admin-form">
+        <input class="field" id="admin-username" placeholder="Admin Username" required />
+        <input class="field" id="admin-password" type="password" placeholder="Password" required />
+        <button class="btn primary" type="submit">Login</button>
+        <div class="message" id="admin-message"></div>
+      </form>
+      <div class="footer">
+        <p style="margin:12px 0 0">Default credentials: admin / admin123</p>
+        <a href="/" style="color:var(--accent);text-decoration:none">← Back to Student Portal</a>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.getElementById('admin-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const username = document.getElementById('admin-username').value.trim().toLowerCase();
+      const password = document.getElementById('admin-password').value;
+      const msg = document.getElementById('admin-message');
+      msg.textContent = '';
+
+      const resp = await fetch('/api/admin-login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username, password })
+      }).then(r => r.json());
+
+      if (!resp.ok) {
+        msg.textContent = resp.message || 'Login failed';
+        return;
+      }
+      localStorage.setItem('admin_token', resp.token);
+      localStorage.setItem('admin_username', resp.admin_username);
+      window.location.href = '/admin';
+    });
+  </script>
+</body>
+</html>
+"""
+
+
+def build_admin_html() -> str:
+    return """<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Admin Dashboard - SUSL GPA Calculator</title>
+  <style>
+    :root { --bg:#f3f6fb; --panel:#fff; --ink:#17233b; --muted:#66768f; --line:#d8dfeb; --accent:#1e59e6; }
+    *{box-sizing:border-box} body{margin:0;font-family:'Trebuchet MS','Segoe UI',sans-serif;background:linear-gradient(180deg,#f8fbff,#edf2fb);color:var(--ink)}
+    .top{height:12px;background:#302840}
+    .wrap{max-width:1280px;margin:0 auto;padding:18px}
+    .header{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px;flex-wrap:wrap}
+    .header h1{margin:0;font-size:2rem}
+    .header .admin-info{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+    .chip{border:1px solid var(--line);padding:8px 12px;border-radius:999px;background:#fff;color:#35507f;font-weight:700}
+    .btn{border:0;border-radius:12px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer}
+    .btn.primary{background:linear-gradient(135deg,#2f64ec,#1749d3);color:#fff}
+    .btn.ghost{background:#fff;border:1px solid var(--line);color:#27406b}
+    .btn.danger{background:#c83c3c;color:#fff}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 28px rgba(18,40,86,.08)}
+    .stats-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:16px;margin-bottom:18px}
+    .stat-card{padding:20px}
+    .stat-card .label{font-size:.75rem;text-transform:uppercase;letter-spacing:.12em;color:var(--muted);font-weight:700}
+    .stat-card .value{font-size:2.4rem;font-weight:900;margin-top:8px}
+    .content-grid{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px;align-items:start}
+    .students-section{padding:20px}
+    .students-section h2{margin:0 0 14px;font-size:1.3rem}
+    .students-toolbar{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap;margin-bottom:12px}
+    .search{flex:1;min-width:220px;min-height:46px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff}
+    .students-table{width:100%;border-collapse:collapse}
+    .students-table thead{background:#f6f8fd;border-bottom:1px solid var(--line)}
+    .students-table th{padding:12px;text-align:left;font-size:.75rem;text-transform:uppercase;letter-spacing:.12em;color:#415170;font-weight:700}
+    .students-table td{padding:12px;border-bottom:1px solid #e9eef7;vertical-align:top}
+    .students-table tr:hover{background:#f9fbff}
+    .status-badge{display:inline-block;padding:4px 8px;border-radius:999px;font-size:.75rem;font-weight:700}
+    .status-badge.active{background:#c7f0d8;color:#0f6f50}
+    .status-badge.inactive{background:#f0e0d8;color:#8b5a00}
+    .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+    .mini{border:1px solid var(--line);background:#fff;border-radius:10px;padding:7px 10px;font:inherit;font-weight:700;cursor:pointer;color:#27406b}
+    .mini.danger{border-color:#edb4b4;color:#b42318}
+    .side-stack{display:grid;gap:16px}
+    .side-card{padding:18px}
+    .side-card h3{margin:0 0 12px;font-size:1.05rem}
+    .form-grid{display:grid;gap:10px}
+    .field{width:100%;min-height:46px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff}
+    .message{min-height:20px;font-size:.9rem;color:#b42318}
+    .ok{color:#0f6f50}
+    @media(max-width:1020px){.content-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr}.side-stack{order:-1}}
+  </style>
+</head>
+<body>
+  <div class="top"></div>
+
+  <div class="wrap">
+    <div class="header">
+      <div>
+        <h1>Admin Dashboard</h1>
+        <div style="color:#667690">Faculty of Computing GPA Calculator</div>
+      </div>
+      <div class="admin-info">
+        <div class="chip" id="admin-name">Admin</div>
+        <button class="btn ghost" id="logout-btn">Logout</button>
+      </div>
+    </div>
+
+    <div class="stats-grid">
+      <div class="panel stat-card">
+        <div class="label">Total Students</div>
+        <div class="value" id="stat-total">0</div>
+      </div>
+      <div class="panel stat-card">
+        <div class="label">With Program Selected</div>
+        <div class="value" id="stat-program">0</div>
+      </div>
+      <div class="panel stat-card">
+        <div class="label">With Progress</div>
+        <div class="value" id="stat-progress">0</div>
+      </div>
+    </div>
+
+    <div class="content-grid">
+      <div class="panel students-section">
+        <h2>Student Accounts</h2>
+        <div class="students-toolbar">
+          <input class="search" id="student-search" placeholder="Search by username, name, ID, or program" />
+          <div class="chip" id="search-count">0 shown</div>
+        </div>
+        <table class="students-table" id="students-table">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Full Name</th>
+              <th>Student ID</th>
+              <th>Program</th>
+              <th>Progress</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="students-body">
+            <tr><td colspan="6" style="text-align:center;color:var(--muted)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="side-stack">
+        <div class="panel side-card">
+          <h3>Change Admin Password</h3>
+          <form class="form-grid" id="password-form">
+            <input class="field" id="current-password" type="password" placeholder="Current password" required />
+            <input class="field" id="new-password" type="password" placeholder="New password" required />
+            <input class="field" id="confirm-password" type="password" placeholder="Confirm new password" required />
+            <button class="btn primary" type="submit">Update Password</button>
+            <div class="message" id="password-message"></div>
+          </form>
+        </div>
+
+        <div class="panel side-card">
+          <h3>Search Tips</h3>
+          <div style="color:#4d5f7a;line-height:1.6;font-size:.95rem">
+            Use the search box to quickly filter students by username, full name, student ID, or program.
+            The rename action updates the student username across active sessions.
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let adminToken = localStorage.getItem('admin_token');
+    let adminUsername = localStorage.getItem('admin_username');
+    let studentsCache = [];
+    let searchQuery = '';
+
+    if (!adminToken) {
+      window.location.href = '/admin/login.html';
+    }
+
+    document.getElementById('admin-name').textContent = adminUsername || 'Admin';
+
+    function authHeaders(extra = {}) {
+      return { ...extra, 'Authorization': 'Bearer ' + adminToken };
+    }
+
+    function matchesQuery(student, query) {
+      if (!query) return true;
+      const haystack = [student.username, student.full_name, student.student_id, student.program].join(' ').toLowerCase();
+      return haystack.includes(query.toLowerCase());
+    }
+
+    function renderStudents() {
+      const body = document.getElementById('students-body');
+      const filtered = studentsCache.filter(student => matchesQuery(student, searchQuery));
+      let withProgress = 0;
+      body.innerHTML = '';
+
+      for (const student of filtered) {
+        if (student.has_progress) withProgress++;
+        const row = document.createElement('tr');
+        row.innerHTML = `
+          <td><strong>${student.username}</strong></td>
+          <td>${student.full_name || '-'}</td>
+          <td>${student.student_id || '-'}</td>
+          <td>${student.program}</td>
+          <td><span class="status-badge ${student.has_progress ? 'active' : 'inactive'}">${student.has_progress ? 'Yes' : 'No'}</span></td>
+          <td>
+            <div class="row-actions">
+              <button class="mini" data-rename="${student.username}">Rename</button>
+            </div>
+          </td>
+        `;
+        body.appendChild(row);
+      }
+
+      if (!filtered.length) {
+        body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:var(--muted)">No students match your search.</td></tr>';
+      }
+
+      document.getElementById('stat-progress').textContent = withProgress;
+      document.getElementById('search-count').textContent = `${filtered.length} shown`;
+
+      for (const button of body.querySelectorAll('[data-rename]')) {
+        button.addEventListener('click', async () => {
+          const oldUsername = button.dataset.rename;
+          const newUsername = prompt(`Rename ${oldUsername} to:` , oldUsername);
+          if (!newUsername) return;
+          const result = await fetch('/api/admin/rename-student', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ old_username: oldUsername, new_username: newUsername.trim().toLowerCase() })
+          }).then(r => r.json());
+          if (!result.ok) {
+            alert(result.message || 'Rename failed');
+            return;
+          }
+          await loadStudents();
+        });
+      }
+    }
+
+    async function loadStats() {
+      const resp = await fetch('/api/admin/stats', { headers: authHeaders() }).then(r => r.json());
+      if (resp.ok) {
+        document.getElementById('stat-total').textContent = resp.total_students;
+        document.getElementById('stat-program').textContent = resp.with_program;
+      }
+    }
+
+    async function loadStudents() {
+      const resp = await fetch('/api/admin/students', { headers: authHeaders() }).then(r => r.json());
+      if (!resp.ok) return;
+      studentsCache = resp.students || [];
+      renderStudents();
+    }
+
+    document.getElementById('student-search').addEventListener('input', (event) => {
+      searchQuery = event.target.value.trim();
+      renderStudents();
+    });
+
+    document.getElementById('password-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const currentPassword = document.getElementById('current-password').value;
+      const newPassword = document.getElementById('new-password').value;
+      const confirmPassword = document.getElementById('confirm-password').value;
+      const message = document.getElementById('password-message');
+      message.textContent = '';
+
+      if (newPassword !== confirmPassword) {
+        message.textContent = 'New password and confirmation do not match.';
+        return;
+      }
+
+      const resp = await fetch('/api/admin/change-password', {
+        method: 'POST',
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
+        body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+      }).then(r => r.json());
+
+      if (!resp.ok) {
+        message.textContent = resp.message || 'Password update failed.';
+        return;
+      }
+
+      message.textContent = 'Password updated successfully.';
+      message.className = 'message ok';
+      event.target.reset();
+      setTimeout(() => { message.textContent = ''; message.className = 'message'; }, 2200);
+    });
+
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      await fetch('/api/admin/logout', {
+        method: 'POST',
+        headers: authHeaders()
+      });
+      localStorage.removeItem('admin_token');
+      localStorage.removeItem('admin_username');
+      window.location.href = '/admin/login.html';
+    });
+
+    loadStats();
+    loadStudents();
+    setInterval(() => { loadStats(); loadStudents(); }, 5000);
+  </script>
+</body>
+</html>
+"""
 
 
 def main() -> None:
