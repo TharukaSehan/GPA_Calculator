@@ -1464,12 +1464,13 @@ def build_admin_html() -> str:
 
 
 def main() -> None:
-    host = "127.0.0.1"
-    port = 8000
+    import os
+    host = "0.0.0.0"
+    port = int(os.environ.get("PORT", 8000))
     server = ThreadingHTTPServer((host, port), GPAHandler)
     url = f"http://{host}:{port}"
     print(f"SUSL GPA app running at {url}")
-    threading.Timer(0.5, lambda: webbrowser.open(url)).start()
+    # Removed webbrowser.open(url) since it shouldn't open a browser on a cloud server
     try:
         server.serve_forever()
     except KeyboardInterrupt:
