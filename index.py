@@ -374,7 +374,7 @@ def read_json_body(handler: BaseHTTPRequestHandler) -> dict[str, Any] | None:
         return None
 
 
-class GPAHandler(BaseHTTPRequestHandler):
+class handler(BaseHTTPRequestHandler):
     def _auth_admin_username(self) -> str | None:
         auth = self.headers.get("Authorization", "")
         if not auth.startswith("Bearer "):
@@ -1467,7 +1467,7 @@ def main() -> None:
     import os
     host = "0.0.0.0"
     port = int(os.environ.get("PORT", 8000))
-    server = ThreadingHTTPServer((host, port), GPAHandler)
+    server = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}"
     print(f"SUSL GPA app running at {url}")
     # Removed webbrowser.open(url) since it shouldn't open a browser on a cloud server
@@ -1481,6 +1481,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
-# Export for Vercel Serverless Functions
-handler = GPAHandler
