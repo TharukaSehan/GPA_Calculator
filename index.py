@@ -252,8 +252,8 @@ PROGRAMS = {
 }
 
 
-USERS_PATH = Path(__file__).with_name("student_accounts.json")
-ADMIN_PATH = Path(__file__).with_name("admin_accounts.json")
+USERS_PATH = Path("/tmp/student_accounts.json")
+ADMIN_PATH = Path("/tmp/admin_accounts.json")
 USERS_LOCK = threading.Lock()
 SESSIONS: dict[str, str] = {}  # token -> username (student)
 ADMIN_SESSIONS: dict[str, str] = {}  # token -> admin_username
@@ -1481,3 +1481,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+# Export for Vercel Serverless Functions
+handler = GPAHandler

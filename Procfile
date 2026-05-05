@@ -1,1 +1,1 @@
-web: python help.py
+web: python index.py
