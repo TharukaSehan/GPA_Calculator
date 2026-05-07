@@ -652,6 +652,50 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "username": new_username})
         return
 
+      if self.path == "/api/admin/change-student-password":
+        body = read_json_body(self) or {}
+        target_username = str(body.get("username", "")).strip().lower()
+        new_password = str(body.get("new_password", ""))
+        if len(target_username) < 3:
+          self._send_json(400, {"ok": False, "message": "Invalid username."})
+          return
+        if len(new_password) < 6:
+          self._send_json(400, {"ok": False, "message": "New password must be at least 6 characters."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          if target_username not in users:
+            self._send_json(404, {"ok": False, "message": "Student not found."})
+            return
+          password_record = create_user_record(new_password)
+          users[target_username]["salt"] = password_record["salt"]
+          users[target_username]["password_hash"] = password_record["password_hash"]
+          save_users(users)
+          for token, session_username in list(SESSIONS.items()):
+            if session_username == target_username:
+              del SESSIONS[token]
+        self._send_json(200, {"ok": True})
+        return
+
+      if self.path == "/api/admin/delete-student":
+        body = read_json_body(self) or {}
+        target_username = str(body.get("username", "")).strip().lower()
+        if len(target_username) < 3:
+          self._send_json(400, {"ok": False, "message": "Invalid username."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          if target_username not in users:
+            self._send_json(404, {"ok": False, "message": "Student not found."})
+            return
+          del users[target_username]
+          save_users(users)
+          for token, session_username in list(SESSIONS.items()):
+            if session_username == target_username:
+              del SESSIONS[token]
+        self._send_json(200, {"ok": True})
+        return
+
       if self.path == "/api/admin/logout":
         auth = self.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
@@ -1316,6 +1360,7 @@ def build_admin_html() -> str:
           <div style="color:#4d5f7a;line-height:1.6;font-size:.95rem">
             Use the search box to quickly filter students by username, full name, student ID, or program.
             The rename action updates the student username across active sessions.
+            Set Password signs out the student from active sessions. Delete permanently removes the account.
           </div>
         </div>
       </div>
@@ -1362,6 +1407,8 @@ def build_admin_html() -> str:
           <td>
             <div class="row-actions">
               <button class="mini" data-rename="${student.username}">Rename</button>
+              <button class="mini" data-change-password="${student.username}">Set Password</button>
+              <button class="mini danger" data-delete="${student.username}">Delete</button>
             </div>
           </td>
         `;
@@ -1389,6 +1436,43 @@ def build_admin_html() -> str:
             alert(result.message || 'Rename failed');
             return;
           }
+          await loadStudents();
+        });
+      }
+
+      for (const button of body.querySelectorAll('[data-change-password]')) {
+        button.addEventListener('click', async () => {
+          const targetUsername = button.dataset.changePassword;
+          const newPassword = prompt(`Set a new password for ${targetUsername}:`);
+          if (!newPassword) return;
+          const result = await fetch('/api/admin/change-student-password', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ username: targetUsername, new_password: newPassword })
+          }).then(r => r.json());
+          if (!result.ok) {
+            alert(result.message || 'Password update failed');
+            return;
+          }
+          alert('Student password updated successfully. Active student sessions were signed out.');
+        });
+      }
+
+      for (const button of body.querySelectorAll('[data-delete]')) {
+        button.addEventListener('click', async () => {
+          const targetUsername = button.dataset.delete;
+          const confirmed = confirm(`Delete student account ${targetUsername}? This cannot be undone.`);
+          if (!confirmed) return;
+          const result = await fetch('/api/admin/delete-student', {
+            method: 'POST',
+            headers: authHeaders({ 'Content-Type': 'application/json' }),
+            body: JSON.stringify({ username: targetUsername })
+          }).then(r => r.json());
+          if (!result.ok) {
+            alert(result.message || 'Delete failed');
+            return;
+          }
+          await loadStats();
           await loadStudents();
         });
       }
