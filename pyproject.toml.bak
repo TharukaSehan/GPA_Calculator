@@ -1,0 +1,9 @@
+[project]
+name = "gpa-calculator"
+version = "0.1.0"
+description = "SUSL GPA Calculator"
+authors = [
+    { name = "Tharuka" }
+]
+dependencies = []
+requires-python = ">=3.9"
