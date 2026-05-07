@@ -10,17 +10,21 @@ Features:
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import hmac
 import json
+import os
 import secrets
 import threading
 import uuid
-import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
+from urllib import error as urllib_error
+from urllib import parse as urllib_parse
+from urllib import request as urllib_request
 
 
 GRADE_POINTS = {
@@ -252,24 +256,117 @@ PROGRAMS = {
 }
 
 
-USERS_PATH = Path("/tmp/student_accounts.json")
-ADMIN_PATH = Path("/tmp/admin_accounts.json")
+DATA_DIR = Path(__file__).resolve().parent
+LOCAL_STORAGE_ROOT = Path("/tmp") if os.environ.get("VERCEL") == "1" else DATA_DIR
+USERS_PATH = LOCAL_STORAGE_ROOT / "student_accounts.json"
+ADMIN_PATH = LOCAL_STORAGE_ROOT / "admin_accounts.json"
+STORAGE_BACKEND = os.environ.get("GPA_STORAGE_BACKEND", "auto").strip().lower()
+GITHUB_TOKEN = os.environ.get("GITHUB_TOKEN", "").strip()
+GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "").strip() or (
+  f"{os.environ.get('VERCEL_GIT_REPO_OWNER', '').strip()}/{os.environ.get('VERCEL_GIT_REPO_SLUG', '').strip()}".strip("/")
+)
+GITHUB_BRANCH = os.environ.get("GITHUB_BRANCH", "").strip() or os.environ.get("VERCEL_GIT_COMMIT_REF", "").strip() or "main"
 USERS_LOCK = threading.Lock()
 SESSIONS: dict[str, str] = {}  # token -> username (student)
 ADMIN_SESSIONS: dict[str, str] = {}  # token -> admin_username
 
 
+def _use_github_storage() -> bool:
+  if STORAGE_BACKEND in {"file", "local"}:
+    return False
+  if STORAGE_BACKEND in {"github", "repo"}:
+    return bool(GITHUB_TOKEN and GITHUB_REPOSITORY)
+  return bool(GITHUB_TOKEN and GITHUB_REPOSITORY)
+
+
+def _github_api_path(file_name: str) -> str:
+  return f"repos/{GITHUB_REPOSITORY}/contents/{urllib_parse.quote(file_name)}"
+
+
+def _github_request(method: str, path: str, payload: dict[str, Any] | None = None) -> dict[str, Any] | None:
+  if not (GITHUB_TOKEN and GITHUB_REPOSITORY):
+    return None
+  url = f"https://api.github.com/{path}"
+  data = None
+  headers = {
+    "Accept": "application/vnd.github+json",
+    "Authorization": f"Bearer {GITHUB_TOKEN}",
+    "X-GitHub-Api-Version": "2022-11-28",
+    "User-Agent": "gpa-calculator",
+  }
+  if payload is not None:
+    data = json.dumps(payload).encode("utf-8")
+    headers["Content-Type"] = "application/json"
+  request = urllib_request.Request(url, data=data, headers=headers, method=method)
+  try:
+    with urllib_request.urlopen(request, timeout=20) as response:
+      body = response.read().decode("utf-8")
+      return json.loads(body) if body else {}
+  except urllib_error.HTTPError as exc:
+    if exc.code == 404:
+      return None
+    raise RuntimeError(f"GitHub storage request failed: {exc.code} {exc.reason}") from exc
+  except Exception as exc:
+    raise RuntimeError(f"GitHub storage request failed: {exc}") from exc
+
+
+def _load_local_json(path: Path) -> dict[str, Any]:
+  if not path.exists():
+    return {}
+  try:
+    return json.loads(path.read_text(encoding="utf-8"))
+  except Exception:
+    return {}
+
+
+def _save_local_json(path: Path, data: dict[str, Any]) -> None:
+  path.write_text(json.dumps(data, indent=2), encoding="utf-8")
+
+
+def _load_github_json(file_name: str) -> dict[str, Any] | None:
+  response = _github_request("GET", f"{_github_api_path(file_name)}?ref={urllib_parse.quote(GITHUB_BRANCH)}")
+  if not response:
+    return None
+  content = response.get("content", "")
+  if not content:
+    return {}
+  encoded = content.replace("\n", "")
+  decoded = base64.b64decode(encoded)
+  try:
+    return json.loads(decoded.decode("utf-8"))
+  except Exception:
+    return {}
+
+
+def _save_github_json(file_name: str, data: dict[str, Any]) -> None:
+  current = _github_request("GET", f"{_github_api_path(file_name)}?ref={urllib_parse.quote(GITHUB_BRANCH)}")
+  payload: dict[str, Any] = {
+    "message": f"Persist {file_name} from GPA Calculator",
+    "content": base64.b64encode(json.dumps(data, indent=2).encode("utf-8")).decode("ascii"),
+    "branch": GITHUB_BRANCH,
+  }
+  if current and current.get("sha"):
+    payload["sha"] = current["sha"]
+  _github_request("PUT", _github_api_path(file_name), payload)
+
+
 def load_users() -> dict[str, Any]:
-    if not USERS_PATH.exists():
-        return {}
-    try:
-        return json.loads(USERS_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+  if _use_github_storage():
+    remote_users = _load_github_json("student_accounts.json")
+    if remote_users is not None:
+      return remote_users
+    local_users = _load_local_json(USERS_PATH)
+    if local_users:
+      _save_github_json("student_accounts.json", local_users)
+    return local_users
+  return _load_local_json(USERS_PATH)
 
 
 def save_users(users: dict[str, Any]) -> None:
-    USERS_PATH.write_text(json.dumps(users, indent=2), encoding="utf-8")
+  if _use_github_storage():
+    _save_github_json("student_accounts.json", users)
+    return
+  _save_local_json(USERS_PATH, users)
 
 
 def hash_password(password: str, salt_hex: str) -> str:
@@ -295,21 +392,28 @@ def verify_password(password: str, user: dict[str, Any]) -> bool:
 
 
 def load_admins() -> dict[str, Any]:
-    if not ADMIN_PATH.exists():
-        # Initialize with default admin if file doesn't exist
-        default = {
-            "admin": create_user_record("admin123")
-        }
-        ADMIN_PATH.write_text(json.dumps(default, indent=2), encoding="utf-8")
-        return default
-    try:
-        return json.loads(ADMIN_PATH.read_text(encoding="utf-8"))
-    except Exception:
-        return {}
+  default = {"admin": create_user_record("admin123")}
+  if _use_github_storage():
+    remote_admins = _load_github_json("admin_accounts.json")
+    if remote_admins is not None:
+      return remote_admins
+    local_admins = _load_local_json(ADMIN_PATH)
+    if local_admins:
+      _save_github_json("admin_accounts.json", local_admins)
+      return local_admins
+    _save_github_json("admin_accounts.json", default)
+    return default
+  if not ADMIN_PATH.exists():
+    _save_local_json(ADMIN_PATH, default)
+    return default
+  return _load_local_json(ADMIN_PATH)
 
 
 def save_admins(admins: dict[str, Any]) -> None:
-    ADMIN_PATH.write_text(json.dumps(admins, indent=2), encoding="utf-8")
+  if _use_github_storage():
+    _save_github_json("admin_accounts.json", admins)
+    return
+  _save_local_json(ADMIN_PATH, admins)
 
 
 def new_token(username: str) -> str:
@@ -762,7 +866,39 @@ HTML = """<!doctype html>
     .pbtn strong{display:block}
     .pbtn span{display:block;color:var(--muted);font-size:.86rem;margin-top:6px}
 
-    @media(max-width:1120px){.layout{grid-template-columns:1fr}} @media(max-width:780px){.actions{grid-template-columns:1fr}.table-head{display:none}.row{grid-template-columns:1fr 1fr}}
+    @media(max-width:1120px){
+      .layout{grid-template-columns:1fr}
+    }
+    @media(max-width:780px){
+      .wrap{padding:12px}
+      .title{flex-direction:column;align-items:stretch;margin-bottom:10px}
+      .title h1{font-size:1.75rem;line-height:1.08}
+      .title .user{width:100%;justify-content:space-between;align-items:stretch;flex-wrap:wrap}
+      .user .chip{flex:1;min-width:0}
+      .user .btn{width:100%}
+      .layout{gap:12px}
+      .panel{border-radius:16px}
+      .semester .head{align-items:flex-start;gap:10px;padding:14px}
+      .semester .head strong{font-size:1.05rem}
+      .semester .body{padding:12px}
+      .table-head{display:none}
+      .row{grid-template-columns:1fr 1fr;gap:8px;padding:10px}
+      .row > div{grid-column:1 / -1}
+      .row .grade,.row .credits{grid-column:auto}
+      .row .remove{grid-column:1 / -1;width:100%}
+      .field{min-height:46px;font-size:16px}
+      .actions{grid-template-columns:1fr;gap:8px}
+      .actions .btn{width:100%}
+      .side{padding:12px}
+      .metric{padding:12px}
+      .metric strong{font-size:1.55rem}
+      .program-picker{padding:14px}
+      .program-grid{grid-template-columns:1fr}
+      .pbtn{padding:12px}
+      .auth-card{padding:16px}
+      .tabs{flex-direction:column}
+      .tabs button{width:100%}
+    }
   </style>
 </head>
 <body>
@@ -1286,7 +1422,40 @@ def build_admin_html() -> str:
     .field{width:100%;min-height:46px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff}
     .message{min-height:20px;font-size:.9rem;color:#b42318}
     .ok{color:#0f6f50}
-    @media(max-width:1020px){.content-grid{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr}.side-stack{order:-1}}
+    @media(max-width:1020px){
+      .content-grid{grid-template-columns:1fr}
+      .stats-grid{grid-template-columns:1fr}
+      .side-stack{order:-1}
+    }
+    @media(max-width:780px){
+      .wrap{padding:12px}
+      .header{align-items:flex-start;margin-bottom:14px}
+      .header h1{font-size:1.65rem;line-height:1.08}
+      .header .admin-info{width:100%}
+      .header .admin-info .chip,.header .admin-info .btn{width:100%}
+      .panel{border-radius:16px}
+      .stat-card{padding:16px}
+      .stat-card .value{font-size:2rem}
+      .students-section{padding:14px}
+      .students-toolbar{align-items:stretch}
+      .search{min-width:0;width:100%}
+      .students-table,
+      .students-table thead,
+      .students-table tbody,
+      .students-table tr,
+      .students-table td{display:block;width:100%}
+      .students-table thead{display:none}
+      .students-table tr{border:1px solid var(--line);border-radius:14px;padding:10px;margin-bottom:10px;background:#fff}
+      .students-table td{border:0;padding:6px 0;display:flex;justify-content:space-between;gap:12px;align-items:flex-start}
+      .students-table td::before{content:attr(data-label);font-size:.72rem;text-transform:uppercase;letter-spacing:.11em;color:var(--muted);font-weight:700;flex:0 0 34%}
+      .students-table td[data-label="Actions"]{flex-direction:column;align-items:stretch}
+      .students-table td[data-label="Actions"]::before{margin-bottom:6px;flex-basis:auto}
+      .row-actions{width:100%}
+      .row-actions .mini{flex:1;min-width:0}
+      .side-card{padding:14px}
+      .form-grid{gap:8px}
+      .field{min-height:46px;font-size:16px}
+    }
   </style>
 </head>
 <body>
@@ -1399,12 +1568,12 @@ def build_admin_html() -> str:
         if (student.has_progress) withProgress++;
         const row = document.createElement('tr');
         row.innerHTML = `
-          <td><strong>${student.username}</strong></td>
-          <td>${student.full_name || '-'}</td>
-          <td>${student.student_id || '-'}</td>
-          <td>${student.program}</td>
-          <td><span class="status-badge ${student.has_progress ? 'active' : 'inactive'}">${student.has_progress ? 'Yes' : 'No'}</span></td>
-          <td>
+          <td data-label="Username"><strong>${student.username}</strong></td>
+          <td data-label="Full Name">${student.full_name || '-'}</td>
+          <td data-label="Student ID">${student.student_id || '-'}</td>
+          <td data-label="Program">${student.program}</td>
+          <td data-label="Progress"><span class="status-badge ${student.has_progress ? 'active' : 'inactive'}">${student.has_progress ? 'Yes' : 'No'}</span></td>
+          <td data-label="Actions">
             <div class="row-actions">
               <button class="mini" data-rename="${student.username}">Rename</button>
               <button class="mini" data-change-password="${student.username}">Set Password</button>
@@ -1551,6 +1720,8 @@ def main() -> None:
     import os
     host = "0.0.0.0"
     port = int(os.environ.get("PORT", 8000))
+    if os.environ.get("VERCEL") == "1" and not _use_github_storage():
+        print("Warning: persistent storage is not configured. Set GITHUB_TOKEN and GITHUB_REPOSITORY to persist accounts on Vercel.")
     server = ThreadingHTTPServer((host, port), handler)
     url = f"http://{host}:{port}"
     print(f"SUSL GPA app running at {url}")
