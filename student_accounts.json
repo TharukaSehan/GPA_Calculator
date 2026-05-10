@@ -452,5 +452,16 @@
     },
     "full_name": "hgfgfjffh",
     "student_id": "45u55"
+  },
+  "testuser8373": {
+    "salt": "51fdb8a9b619b7026058d31cddc2a6a0",
+    "password_hash": "854cbe912a287b4010a0a6abd781214adc991a9a196edfd636db65e3064f3031",
+    "program": "CIS",
+    "state": {
+      "program": "CIS",
+      "semesters": []
+    },
+    "full_name": "Test User",
+    "student_id": "12345"
   }
 }
