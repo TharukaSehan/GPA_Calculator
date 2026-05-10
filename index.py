@@ -254,10 +254,16 @@ PROGRAMS = {
         "semesters": {1: [], 2: [], 3: [], 4: [], 5: [], 6: [], 7: [], 8: []},
     },
 }
-
-
 DATA_DIR = Path(__file__).resolve().parent
-LOCAL_STORAGE_ROOT = Path("/tmp") if os.environ.get("VERCEL") == "1" else DATA_DIR
+storage_dir_env = os.environ.get("STORAGE_DIR")
+if storage_dir_env:
+    LOCAL_STORAGE_ROOT = Path(storage_dir_env)
+    LOCAL_STORAGE_ROOT.mkdir(parents=True, exist_ok=True)
+elif os.environ.get("VERCEL") == "1":
+    LOCAL_STORAGE_ROOT = Path("/tmp")
+else:
+    LOCAL_STORAGE_ROOT = DATA_DIR
+
 USERS_PATH = LOCAL_STORAGE_ROOT / "student_accounts.json"
 ADMIN_PATH = LOCAL_STORAGE_ROOT / "admin_accounts.json"
 STORAGE_BACKEND = os.environ.get("GPA_STORAGE_BACKEND", "auto").strip().lower()
