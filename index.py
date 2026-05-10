@@ -276,6 +276,9 @@ USERS_LOCK = threading.Lock()
 SESSIONS: dict[str, str] = {}  # token -> username (student)
 ADMIN_SESSIONS: dict[str, str] = {}  # token -> admin_username
 
+_USERS_CACHE: dict[str, Any] | None = None
+_ADMINS_CACHE: dict[str, Any] | None = None
+
 
 def _use_github_storage() -> bool:
   if STORAGE_BACKEND in {"file", "local"}:
@@ -299,6 +302,7 @@ def _github_request(method: str, path: str, payload: dict[str, Any] | None = Non
     "Authorization": f"Bearer {GITHUB_TOKEN}",
     "X-GitHub-Api-Version": "2022-11-28",
     "User-Agent": "gpa-calculator",
+    "Cache-Control": "no-cache",
   }
   if payload is not None:
     data = json.dumps(payload).encode("utf-8")
@@ -357,20 +361,37 @@ def _save_github_json(file_name: str, data: dict[str, Any]) -> None:
 
 
 def load_users() -> dict[str, Any]:
+  global _USERS_CACHE
+  if _USERS_CACHE is not None:
+    return _USERS_CACHE
+
   if _use_github_storage():
     remote_users = _load_github_json("student_accounts.json")
     if remote_users is not None:
-      return remote_users
+      _USERS_CACHE = remote_users
+      return _USERS_CACHE
     local_users = _load_local_json(USERS_PATH)
     if local_users:
-      _save_github_json("student_accounts.json", local_users)
-    return local_users
-  return _load_local_json(USERS_PATH)
+      try:
+        _save_github_json("student_accounts.json", local_users)
+      except Exception as e:
+        print(f"Warning: Failed to save to GitHub: {e}")
+    _USERS_CACHE = local_users
+    return _USERS_CACHE
+  
+  _USERS_CACHE = _load_local_json(USERS_PATH)
+  return _USERS_CACHE
 
 
 def save_users(users: dict[str, Any]) -> None:
+  global _USERS_CACHE
+  _USERS_CACHE = users
   if _use_github_storage():
-    _save_github_json("student_accounts.json", users)
+    try:
+      _save_github_json("student_accounts.json", users)
+    except Exception as e:
+      print(f"Warning: Failed to save to GitHub: {e}")
+      _save_local_json(USERS_PATH, users)
     return
   _save_local_json(USERS_PATH, users)
 
@@ -398,26 +419,49 @@ def verify_password(password: str, user: dict[str, Any]) -> bool:
 
 
 def load_admins() -> dict[str, Any]:
+  global _ADMINS_CACHE
+  if _ADMINS_CACHE is not None:
+    return _ADMINS_CACHE
+
   default = {"admin": create_user_record("admin123")}
   if _use_github_storage():
     remote_admins = _load_github_json("admin_accounts.json")
     if remote_admins is not None:
-      return remote_admins
+      _ADMINS_CACHE = remote_admins
+      return _ADMINS_CACHE
     local_admins = _load_local_json(ADMIN_PATH)
     if local_admins:
-      _save_github_json("admin_accounts.json", local_admins)
-      return local_admins
-    _save_github_json("admin_accounts.json", default)
-    return default
+      try:
+        _save_github_json("admin_accounts.json", local_admins)
+      except Exception as e:
+        print(f"Warning: Failed to save to GitHub: {e}")
+      _ADMINS_CACHE = local_admins
+      return _ADMINS_CACHE
+    try:
+      _save_github_json("admin_accounts.json", default)
+    except Exception as e:
+      print(f"Warning: Failed to save to GitHub: {e}")
+    _ADMINS_CACHE = default
+    return _ADMINS_CACHE
+
   if not ADMIN_PATH.exists():
     _save_local_json(ADMIN_PATH, default)
-    return default
-  return _load_local_json(ADMIN_PATH)
+    _ADMINS_CACHE = default
+    return _ADMINS_CACHE
+  
+  _ADMINS_CACHE = _load_local_json(ADMIN_PATH)
+  return _ADMINS_CACHE
 
 
 def save_admins(admins: dict[str, Any]) -> None:
+  global _ADMINS_CACHE
+  _ADMINS_CACHE = admins
   if _use_github_storage():
-    _save_github_json("admin_accounts.json", admins)
+    try:
+      _save_github_json("admin_accounts.json", admins)
+    except Exception as e:
+      print(f"Warning: Failed to save to GitHub: {e}")
+      _save_local_json(ADMIN_PATH, admins)
     return
   _save_local_json(ADMIN_PATH, admins)
 
