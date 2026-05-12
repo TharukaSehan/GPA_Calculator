@@ -757,6 +757,40 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True})
         return
 
+      if parsed_path == "/api/update-profile":
+        username = self._auth_username()
+        if not username:
+          self._send_json(401, {"ok": False, "message": "Unauthorized"})
+          return
+        body = read_json_body(self) or {}
+        new_username = str(body.get("username", "")).strip().lower()
+        full_name = str(body.get("full_name", "")).strip()
+        student_id = str(body.get("student_id", "")).strip()
+        if len(new_username) < 3:
+          self._send_json(400, {"ok": False, "message": "Username must be at least 3 characters."})
+          return
+        with USERS_LOCK:
+          users = load_users()
+          user = users.get(username)
+          if not user:
+            self._send_json(404, {"ok": False, "message": "User not found"})
+            return
+          if new_username != username and new_username in users:
+            self._send_json(409, {"ok": False, "message": "Username already exists."})
+            return
+          user["full_name"] = full_name
+          user["student_id"] = student_id
+          if new_username != username:
+            users[new_username] = users.pop(username)
+            for token, session_username in list(SESSIONS.items()):
+              if session_username == username:
+                SESSIONS[token] = new_username
+            username = new_username
+          users[username] = user
+          save_users(users)
+        self._send_json(200, {"ok": True, "username": username, "full_name": full_name, "student_id": student_id})
+        return
+
       if parsed_path == "/api/logout":
         auth = self.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
@@ -879,39 +913,65 @@ HTML = """<!doctype html>
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>SUSL GPA Calculator</title>
   <style>
-    :root { --bg:#f3f6fb; --panel:#fff; --ink:#17233b; --muted:#66768f; --line:#d8dfeb; --accent:#1e59e6; }
-    *{box-sizing:border-box} body{margin:0;font-family:'Trebuchet MS','Segoe UI',sans-serif;background:linear-gradient(180deg,#f8fbff,#edf2fb);color:var(--ink)}
-    .top{height:12px;background:#302840}
+    :root {
+      --bg:#eef3ff;
+      --panel:#ffffff;
+      --ink:#111827;
+      --muted:#5b6476;
+      --line:#dfe7fb;
+      --accent:#5b5cf6;
+      --accent-2:#7c3aed;
+      --accent-3:#2f6bff;
+      --soft:#f4f7ff;
+    }
+    *{box-sizing:border-box} body{margin:0;font-family:'Trebuchet MS','Segoe UI',sans-serif;background:
+      radial-gradient(circle at top right, rgba(91,92,246,.12), transparent 34%),
+      radial-gradient(circle at 12% 18%, rgba(47,107,255,.12), transparent 30%),
+      linear-gradient(180deg,#fbfcff 0%, #eef3ff 48%, #e8efff 100%);color:var(--ink)}
+    .top{height:12px;background:linear-gradient(90deg,#5b5cf6,#7c3aed,#2f6bff)}
     .wrap{max-width:1480px;margin:0 auto;padding:18px}
     .title{display:flex;justify-content:space-between;align-items:end;gap:12px;margin-bottom:12px}
-    .title h1{margin:0;font-size:2.3rem;letter-spacing:-.04em}
+    .title h1{margin:0;font-size:2.3rem;letter-spacing:-.04em;background:linear-gradient(90deg,var(--accent),var(--accent-2));-webkit-background-clip:text;background-clip:text;color:transparent}
     .title .user{display:flex;gap:8px;align-items:center}
-    .chip{border:1px solid var(--line);padding:8px 12px;border-radius:999px;background:#fff;color:#35507f;font-weight:700}
+    .chip{border:1px solid rgba(91,92,246,.18);padding:8px 12px;border-radius:999px;background:linear-gradient(180deg,#ffffff,#f4f7ff);color:#35507f;font-weight:700;box-shadow:0 8px 18px rgba(91,92,246,.08)}
     .btn{border:0;border-radius:12px;padding:10px 14px;font:inherit;font-weight:800;cursor:pointer}
-    .btn.primary{background:linear-gradient(135deg,#2f64ec,#1749d3);color:#fff}
-    .btn.ghost{background:#fff;border:1px solid var(--line);color:#27406b}
+    .btn.primary{background:linear-gradient(135deg,var(--accent-3),var(--accent),var(--accent-2));color:#fff;box-shadow:0 10px 22px rgba(91,92,246,.22)}
+    .btn.primary:hover{filter:brightness(1.03)}
+    .btn.ghost{background:linear-gradient(180deg,#fff,#f6f8ff);border:1px solid var(--line);color:#27406b}
     .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
-    .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 14px 28px rgba(18,40,86,.08)}
+    .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 18px 34px rgba(44,67,143,.08)}
     .semester{overflow:hidden}
-    .semester .head{display:flex;justify-content:space-between;align-items:center;background:#eef4ff;padding:16px 18px;border-bottom:1px solid var(--line)}
+    .semester .head{display:flex;justify-content:space-between;align-items:center;background:linear-gradient(90deg,#edf3ff,#f7f4ff);padding:16px 18px;border-bottom:1px solid var(--line)}
     .semester .head strong{font-size:1.3rem}
     .semester .body{padding:14px}
     .table-head,.row{display:grid;grid-template-columns:minmax(0,1fr) 120px 100px auto;gap:10px;align-items:center}
-    .table-head{padding:12px;font-size:.73rem;text-transform:uppercase;letter-spacing:.12em;color:#415170;background:#f6f8fd;border-bottom:1px solid var(--line)}
+    .table-head{padding:12px;font-size:.73rem;text-transform:uppercase;letter-spacing:.12em;color:#46567a;background:#f7f9ff;border-bottom:1px solid var(--line)}
     .row{padding:8px;border-bottom:1px solid #e9eef7}
-    .field{width:100%;min-height:48px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff}
+    .field{width:100%;min-height:48px;border:1px solid #cfd8e6;border-radius:12px;padding:0 12px;font:inherit;background:#fff;transition:border-color .15s ease,box-shadow .15s ease}
+    .field:focus{outline:none;border-color:rgba(91,92,246,.6);box-shadow:0 0 0 4px rgba(91,92,246,.12)}
     .meta{font-size:.82rem;color:var(--muted);margin-top:6px}
-    .badge{display:inline-block;padding:3px 8px;border-radius:999px;background:#edf3ff;color:#224a95;font-size:.74rem;font-weight:700;margin-left:6px}
+    .badge{display:inline-block;padding:3px 8px;border-radius:999px;background:linear-gradient(135deg,rgba(91,92,246,.12),rgba(124,58,237,.12));color:#4b36c8;font-size:.74rem;font-weight:700;margin-left:6px}
     .actions{display:grid;grid-template-columns:minmax(0,1fr) 140px 120px;gap:10px;margin-top:12px}
     .side{padding:14px}
-    .metric{padding:12px;border:1px solid var(--line);border-radius:14px;background:#f7faff;margin-bottom:10px}
+    .metric{padding:12px;border:1px solid var(--line);border-radius:14px;background:linear-gradient(180deg,#fbfcff,#f3f6ff);margin-bottom:10px}
     .metric small{display:block;color:var(--muted);text-transform:uppercase;letter-spacing:.11em;font-size:.7rem;font-weight:800}
     .metric strong{display:block;font-size:1.9rem;letter-spacing:-.03em}
-    .status.good{color:#0f6f50}.status.warn{color:#9a4d00}.status.bad{color:#b42318}
+    .status.good{color:#1f7a5c}.status.warn{color:#a15c00}.status.bad{color:#c03232}
     .rules{font-size:.92rem;color:#394b67;line-height:1.55}
+    .chart-card{padding:14px;margin-top:10px;background:linear-gradient(180deg,#fcfdff,#f4f7ff)}
+    .chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;margin-bottom:10px}
+    .chart-head h3{margin:0;font-size:1.05rem}
+    .chart-head p{margin:4px 0 0;color:var(--muted);font-size:.85rem}
+    .chart-legend{display:flex;flex-wrap:wrap;gap:8px;align-items:center;justify-content:flex-end}
+    .legend-item{display:flex;align-items:center;gap:6px;font-size:.78rem;color:#415170;font-weight:700;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 8px}
+    .legend-swatch{width:18px;height:3px;border-radius:999px;display:inline-block}
+    .legend-dot{width:10px;height:10px;border-radius:999px;display:inline-block;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.08)}
+    .chart-wrap{position:relative}
+    .chart-svg{width:100%;height:auto;display:block}
+    .chart-caption{margin-top:8px;font-size:.78rem;color:var(--muted)}
     .hidden{display:none !important}
 
-    .overlay{position:fixed;inset:0;background:rgba(13,19,35,.48);display:grid;place-items:center;padding:12px;z-index:10}
+    .overlay{position:fixed;inset:0;background:rgba(17,24,39,.42);backdrop-filter:blur(8px);display:grid;place-items:center;padding:12px;z-index:10}
     .auth-card{width:min(560px,100%);padding:18px}
     .tabs{display:flex;gap:8px;margin-bottom:10px}
     .tabs button{flex:1}
@@ -920,9 +980,19 @@ HTML = """<!doctype html>
 
     .program-picker{width:min(720px,100%);padding:18px}
     .program-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-top:12px}
-    .pbtn{border:1px solid var(--line);border-radius:14px;padding:14px;background:#fff;cursor:pointer;text-align:left}
+    .pbtn{border:1px solid var(--line);border-radius:14px;padding:14px;background:linear-gradient(180deg,#ffffff,#f7f8ff);cursor:pointer;text-align:left;transition:transform .15s ease,box-shadow .15s ease,border-color .15s ease}
+    .pbtn:hover{transform:translateY(-1px);box-shadow:0 12px 24px rgba(91,92,246,.12);border-color:rgba(91,92,246,.35)}
     .pbtn strong{display:block}
     .pbtn span{display:block;color:var(--muted);font-size:.86rem;margin-top:6px}
+
+    .settings-card{width:min(620px,100%);padding:18px}
+    .settings-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .settings-head h2{margin:0}
+    .settings-form{display:grid;gap:10px;margin-top:14px}
+    .settings-grid{display:grid;gap:10px}
+    .settings-note{min-height:20px;font-size:.9rem;color:#b42318}
+    .settings-actions{display:flex;gap:10px;justify-content:flex-end;flex-wrap:wrap}
+    .settings-actions .btn{width:auto;min-width:140px}
 
     @media(max-width:1120px){
       .layout{grid-template-columns:1fr}
@@ -993,6 +1063,34 @@ HTML = """<!doctype html>
     </div>
   </div>
 
+  <div id="settings-overlay" class="overlay hidden">
+    <div class="panel settings-card">
+      <div class="settings-head">
+        <div>
+          <h2>Settings</h2>
+          <p style="margin:8px 0 0;color:#5c6e89">Update your username, full name, and student ID.</p>
+        </div>
+        <button class="btn ghost" id="settings-close" type="button">Close</button>
+      </div>
+      <form id="settings-form" class="settings-form">
+        <div class="settings-grid">
+          <input class="field" id="settings-username" placeholder="Username" required />
+          <input class="field" id="settings-full_name" placeholder="Full Name" />
+          <input class="field" id="settings-student_id" placeholder="Student ID" />
+        </div>
+        <div style="display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;align-items:center">
+          <div id="settings-program" style="color:#5c6e89;font-size:.92rem"></div>
+          <button class="btn ghost" id="settings-change-program" type="button">Change Degree Program</button>
+        </div>
+        <div class="settings-note" id="settings-message"></div>
+        <div class="settings-actions">
+          <button class="btn ghost" id="settings-cancel" type="button">Cancel</button>
+          <button class="btn primary" type="submit">Save Changes</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div class="wrap hidden" id="app-root">
     <div class="title">
       <div>
@@ -1021,6 +1119,23 @@ HTML = """<!doctype html>
         <div class="metric"><small>Overall GPA</small><strong id="m-overall">0.00</strong><span id="n-overall"></span></div>
         <div class="metric"><small>Final GPA</small><strong id="m-fgpa">0.00</strong><span id="n-fgpa"></span></div>
         <div class="metric"><small>Status</small><strong id="m-status" class="status warn">In Progress</strong><span id="n-status"></span></div>
+        <div class="panel chart-card">
+          <div class="chart-head">
+            <div>
+              <h3>GPA Progress</h3>
+              <p>Cumulative GPA by semester with class benchmark lines</p>
+            </div>
+            <div class="chart-legend">
+              <span class="legend-item"><span class="legend-swatch" style="background:linear-gradient(90deg,#2f6bff,#7c3aed)"></span>Your GPA</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#6b5cf6"></span>1st Class</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#8f6bff"></span>2nd Upper</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#b07cff"></span>2nd Lower</span>
+              <span class="legend-item"><span class="legend-swatch" style="background:#d0abff"></span>General Degree</span>
+            </div>
+          </div>
+          <div class="chart-wrap" id="gpa-chart"></div>
+          <div class="chart-caption">Reference lines show the final degree classification targets.</div>
+        </div>
         <div class="rules">
           Grade scale follows handbook (A+ to E). GPA uses credited GPA courses. Non-GPA English/Communication courses are tracked but excluded from GPA.
         </div>
@@ -1069,8 +1184,17 @@ HTML = """<!doctype html>
 
     const authOverlay = document.getElementById('auth-overlay');
     const programOverlay = document.getElementById('program-overlay');
+    const settingsOverlay = document.getElementById('settings-overlay');
     const appRoot = document.getElementById('app-root');
     const semestersHost = document.getElementById('semesters');
+    const gpaChartHost = document.getElementById('gpa-chart');
+
+    const GPA_BENCHMARKS = [
+      { label: '1st Class', value: 3.7, color: '#6b5cf6', dash: '10 8' },
+      { label: '2nd Upper', value: 3.3, color: '#8f6bff', dash: '10 8' },
+      { label: '2nd Lower', value: 3.0, color: '#b07cff', dash: '10 8' },
+      { label: 'General Degree', value: 2.0, color: '#d0abff', dash: '10 8' },
+    ];
 
     function uid(){ return crypto.randomUUID(); }
 
@@ -1192,6 +1316,118 @@ HTML = """<!doctype html>
       return /communication skills|general english|academic english|business english/i.test(course || '');
     }
 
+    function cumulativeGpaSeries(){
+      if (!state || !state.semesters) return [];
+      let totalPoints = 0;
+      let totalCredits = 0;
+      return [...state.semesters]
+        .sort((a, b) => a.number - b.number)
+        .map((sem) => {
+          const metrics = computeSemester(sem);
+          totalPoints += metrics.points;
+          totalCredits += metrics.credits;
+          return {
+            semester: sem.number,
+            gpa: totalCredits ? totalPoints / totalCredits : null,
+          };
+        });
+    }
+
+    function renderGpaChart(){
+      if (!gpaChartHost) return;
+      if (!state || !state.semesters || !state.semesters.length){
+        gpaChartHost.innerHTML = '<div style="color:#5b6476;font-size:.9rem;padding:8px 2px;">Add courses to see the GPA trend chart.</div>';
+        return;
+      }
+
+      const series = cumulativeGpaSeries();
+      const width = 960;
+      const height = 300;
+      const margin = { top: 16, right: 18, bottom: 42, left: 50 };
+      const plotWidth = width - margin.left - margin.right;
+      const plotHeight = height - margin.top - margin.bottom;
+      const maxY = 4.2;
+      const minY = 0;
+      const xStep = series.length > 1 ? plotWidth / (series.length - 1) : 0;
+      const xAt = (index) => margin.left + (series.length > 1 ? index * xStep : plotWidth / 2);
+      const yAt = (value) => margin.top + (maxY - Math.max(minY, Math.min(maxY, value))) / (maxY - minY) * plotHeight;
+
+      const gridLines = [0, 1, 2, 3, 4];
+      const yTicks = gridLines.map((value) => {
+        const y = yAt(value);
+        return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="#e2e8f7" stroke-width="1" />` +
+               `<text x="${margin.left - 10}" y="${y + 4}" text-anchor="end" fill="#667690" font-size="12">${value.toFixed(0)}</text>`;
+      }).join('');
+
+      const benchmarkLines = GPA_BENCHMARKS.map((line) => {
+        const y = yAt(line.value);
+        return `<line x1="${margin.left}" y1="${y}" x2="${width - margin.right}" y2="${y}" stroke="${line.color}" stroke-width="2" stroke-dasharray="${line.dash}" opacity="0.65" />` +
+               `<text x="${width - margin.right}" y="${y - 6}" text-anchor="end" fill="${line.color}" font-size="12" font-weight="700">${line.label} ${line.value.toFixed(1)}</text>`;
+      }).join('');
+
+      const points = series
+        .map((item, index) => ({ x: xAt(index), y: item.gpa == null ? null : yAt(item.gpa), semester: item.semester, gpa: item.gpa }))
+        .filter((point) => point.y != null);
+
+      const linePoints = points.map((point) => `${point.x},${point.y}`).join(' ');
+      const areaPath = points.length
+        ? `M ${points[0].x} ${height - margin.bottom} L ${points[0].x} ${points[0].y} ${points.slice(1).map((point) => `L ${point.x} ${point.y}`).join(' ')} L ${points[points.length - 1].x} ${height - margin.bottom} Z`
+        : '';
+
+      const markers = points.map((point) =>
+        `<g><circle cx="${point.x}" cy="${point.y}" r="5.5" fill="#fff" stroke="url(#gpaLineGradient)" stroke-width="3" />` +
+        `<circle cx="${point.x}" cy="${point.y}" r="10" fill="transparent" />` +
+        `<text x="${point.x}" y="${point.y - 12}" text-anchor="middle" fill="#334155" font-size="12" font-weight="700">${point.gpa.toFixed(2)}</text>` +
+        `</g>`
+      ).join('');
+
+      const xLabels = series.map((item, index) =>
+        `<text x="${xAt(index)}" y="${height - 14}" text-anchor="middle" fill="#667690" font-size="12">Sem ${item.semester}</text>`
+      ).join('');
+
+      const emptyState = points.length
+        ? ''
+        : `<text x="${width / 2}" y="${height / 2}" text-anchor="middle" fill="#667690" font-size="14">Enter GPA grades to populate the chart.</text>`;
+
+      gpaChartHost.innerHTML = `
+        <svg class="chart-svg" viewBox="0 0 ${width} ${height}" role="img" aria-label="GPA trend chart">
+          <defs>
+            <linearGradient id="gpaLineGradient" x1="0" y1="0" x2="1" y2="0">
+              <stop offset="0%" stop-color="#2f6bff" />
+              <stop offset="55%" stop-color="#5b5cf6" />
+              <stop offset="100%" stop-color="#7c3aed" />
+            </linearGradient>
+            <linearGradient id="gpaAreaGradient" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stop-color="rgba(91,92,246,.22)" />
+              <stop offset="100%" stop-color="rgba(91,92,246,0)" />
+            </linearGradient>
+          </defs>
+          <rect x="0" y="0" width="${width}" height="${height}" rx="18" fill="#ffffff" stroke="#e1e8f8" />
+          ${yTicks}
+          ${benchmarkLines}
+          ${emptyState}
+          ${areaPath ? `<path d="${areaPath}" fill="url(#gpaAreaGradient)" opacity="0.95" />` : ''}
+          ${linePoints ? `<polyline points="${linePoints}" fill="none" stroke="url(#gpaLineGradient)" stroke-width="4" stroke-linecap="round" stroke-linejoin="round" />` : ''}
+          ${markers}
+          <line x1="${margin.left}" y1="${height - margin.bottom}" x2="${width - margin.right}" y2="${height - margin.bottom}" stroke="#cfd8e6" stroke-width="1.25" />
+          ${xLabels}
+        </svg>
+      `;
+    }
+
+    function openSettings(){
+      document.getElementById('settings-username').value = username || '';
+      document.getElementById('settings-full_name').value = profile.full_name || '';
+      document.getElementById('settings-student_id').value = profile.student_id || '';
+      document.getElementById('settings-program').textContent = state ? `Current program: ${state.program}` : '';
+      document.getElementById('settings-message').textContent = '';
+      settingsOverlay.classList.remove('hidden');
+    }
+
+    function closeSettings(){
+      settingsOverlay.classList.add('hidden');
+    }
+
     function render(){
       semestersHost.innerHTML = '';
       const tplSem = document.getElementById('semester-template');
@@ -1244,7 +1480,8 @@ HTML = """<!doctype html>
       });
 
       computeMetrics();
-      document.getElementById('whoami').textContent = `${username} · ${state.program}`;
+      const identity = profile.full_name ? `${profile.full_name} (@${username})` : username;
+      document.getElementById('whoami').textContent = `${identity} · ${state.program}${profile.student_id ? ` · ${profile.student_id}` : ''}`;
     }
 
     function queueSave(){
@@ -1331,9 +1568,43 @@ HTML = """<!doctype html>
       setTimeout(() => { n.textContent = old; }, 1800);
     });
 
+      renderGpaChart();
+
     document.getElementById('change-program').addEventListener('click', () => {
+      openSettings();
+    });
+
+    document.getElementById('settings-close').addEventListener('click', closeSettings);
+    document.getElementById('settings-cancel').addEventListener('click', closeSettings);
+    document.getElementById('settings-change-program').addEventListener('click', () => {
+      closeSettings();
       programOverlay.classList.remove('hidden');
       appRoot.classList.add('hidden');
+    });
+
+    document.getElementById('settings-form').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const nextUsername = document.getElementById('settings-username').value.trim().toLowerCase();
+      const nextFullName = document.getElementById('settings-full_name').value.trim();
+      const nextStudentId = document.getElementById('settings-student_id').value.trim();
+      const message = document.getElementById('settings-message');
+      message.textContent = '';
+
+      const res = await api('/api/update-profile', 'POST', {
+        username: nextUsername,
+        full_name: nextFullName,
+        student_id: nextStudentId,
+      });
+      if (!res.ok){
+        message.textContent = res.message || 'Could not update settings.';
+        return;
+      }
+
+      username = res.username || nextUsername;
+      profile.full_name = res.full_name || nextFullName;
+      profile.student_id = res.student_id || nextStudentId;
+      closeSettings();
+      render();
     });
 
     document.getElementById('reset').addEventListener('click', async () => {
