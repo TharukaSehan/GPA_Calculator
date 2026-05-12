@@ -938,6 +938,7 @@ HTML = """<!doctype html>
     .btn.primary{background:linear-gradient(135deg,var(--accent-3),var(--accent),var(--accent-2));color:#fff;box-shadow:0 10px 22px rgba(91,92,246,.22)}
     .btn.primary:hover{filter:brightness(1.03)}
     .btn.ghost{background:linear-gradient(180deg,#fff,#f6f8ff);border:1px solid var(--line);color:#27406b}
+    .btn.danger{background:linear-gradient(135deg,#ef4444,#dc2626);color:#fff;box-shadow:0 10px 22px rgba(220,38,38,.18)}
     .layout{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:16px}
     .panel{background:var(--panel);border:1px solid var(--line);border-radius:20px;box-shadow:0 18px 34px rgba(44,67,143,.08)}
     .semester{overflow:hidden}
@@ -1147,7 +1148,10 @@ HTML = """<!doctype html>
     <section class="panel semester">
       <div class="head">
         <div><strong class="sem-title">Semester 1</strong><div class="sem-sub" style="color:#667690;font-size:.9rem"></div></div>
-        <button class="btn ghost sem-toggle">Collapse</button>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end">
+          <button class="btn danger sem-remove" type="button">Remove Semester</button>
+          <button class="btn ghost sem-toggle" type="button">Collapse</button>
+        </div>
       </div>
       <div class="body">
         <div class="table-head"><div>Course / Subject Code</div><div>Grade</div><div>Credits</div><div></div></div>
@@ -1434,6 +1438,8 @@ HTML = """<!doctype html>
       const tplRow = document.getElementById('row-template');
       const handbook = PROGRAMS[state.program]?.from_handbook;
 
+      state.semesters.sort((a, b) => a.number - b.number);
+
       state.semesters.forEach((sem) => {
         const semNode = tplSem.content.firstElementChild.cloneNode(true);
         semNode.querySelector('.sem-title').textContent = `Semester ${sem.number}`;
@@ -1442,8 +1448,20 @@ HTML = """<!doctype html>
         const body = semNode.querySelector('.body');
         const rowsHost = semNode.querySelector('.rows');
         const toggleBtn = semNode.querySelector('.sem-toggle');
+        const removeBtn = semNode.querySelector('.sem-remove');
         if (sem.collapsed){ body.classList.add('hidden'); toggleBtn.textContent = 'Expand'; }
         toggleBtn.addEventListener('click', () => { sem.collapsed = !sem.collapsed; render(); queueSave(); });
+        removeBtn.addEventListener('click', () => {
+          if (state.semesters.length === 1) return;
+          const ok = window.confirm(`Remove Semester ${sem.number}? This will delete the whole semester and all of its courses.`);
+          if (!ok) return;
+          state.semesters = state.semesters.filter(item => item.id !== sem.id).map((item, index) => ({
+            ...item,
+            number: index + 1,
+          }));
+          render();
+          queueSave();
+        });
 
         sem.rows.forEach((row) => {
           const rowNode = tplRow.content.firstElementChild.cloneNode(true);
