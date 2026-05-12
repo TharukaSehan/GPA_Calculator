@@ -561,11 +561,15 @@ class handler(BaseHTTPRequestHandler):
         return SESSIONS.get(token)
 
     def do_GET(self) -> None:  # noqa: N802
-      if self.path in {"/", "/index.html"}:
+      parsed_path = urllib_parse.urlparse(self.path).path
+      if parsed_path.endswith("/") and len(parsed_path) > 1:
+          parsed_path = parsed_path.rstrip("/")
+
+      if parsed_path in {"", "/", "/index.html"}:
         self._send_html()
         return
 
-      if self.path == "/admin":
+      if parsed_path == "/admin":
         html = build_admin_html().encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -575,7 +579,7 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(html)
         return
 
-      if self.path == "/admin/login.html":
+      if parsed_path == "/admin/login.html":
         html = build_admin_login_html().encode("utf-8")
         self.send_response(HTTPStatus.OK)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -585,7 +589,7 @@ class handler(BaseHTTPRequestHandler):
         self.wfile.write(html)
         return
 
-      if self.path == "/api/me":
+      if parsed_path == "/api/me":
         username = self._auth_username()
         if not username:
           self._send_json(401, {"ok": False, "message": "Unauthorized"})
@@ -609,7 +613,7 @@ class handler(BaseHTTPRequestHandler):
         )
         return
 
-      if self.path == "/api/admin/stats":
+      if parsed_path == "/api/admin/stats":
         admin = self._auth_admin_username()
         if not admin:
           self._send_json(401, {"ok": False, "message": "Unauthorized"})
@@ -621,7 +625,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "total_students": total, "with_program": with_program})
         return
 
-      if self.path == "/api/admin/students":
+      if parsed_path == "/api/admin/students":
         admin = self._auth_admin_username()
         if not admin:
           self._send_json(401, {"ok": False, "message": "Unauthorized"})
@@ -640,7 +644,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "students": sorted(students, key=lambda x: x["username"])})
         return
 
-      if self.path == "/api/admin/logout":
+      if parsed_path == "/api/admin/logout":
         auth = self.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
         if token and token in ADMIN_SESSIONS:
@@ -651,7 +655,11 @@ class handler(BaseHTTPRequestHandler):
       self.send_error(404, "Not found")
 
     def do_POST(self) -> None:  # noqa: N802
-      if self.path == "/api/admin-login":
+      parsed_path = urllib_parse.urlparse(self.path).path
+      if parsed_path.endswith("/") and len(parsed_path) > 1:
+          parsed_path = parsed_path.rstrip("/")
+
+      if parsed_path == "/api/admin-login":
         body = read_json_body(self) or {}
         username = str(body.get("username", "")).strip().lower()
         password = str(body.get("password", ""))
@@ -665,7 +673,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "token": token, "admin_username": username})
         return
 
-      if self.path == "/api/register":
+      if parsed_path == "/api/register":
         body = read_json_body(self) or {}
         username = str(body.get("username", "")).strip().lower()
         password = str(body.get("password", ""))
@@ -685,7 +693,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "token": token, "username": username, "program": None, "state": None, "full_name": users[username].get("full_name", ""), "student_id": users[username].get("student_id", "")})
         return
 
-      if self.path == "/api/login":
+      if parsed_path == "/api/login":
         body = read_json_body(self) or {}
         username = str(body.get("username", "")).strip().lower()
         password = str(body.get("password", ""))
@@ -699,7 +707,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "token": token, "username": username, "program": user.get("program"), "state": user.get("state"), "full_name": user.get("full_name", ""), "student_id": user.get("student_id", "")})
         return
 
-      if self.path == "/api/set-program":
+      if parsed_path == "/api/set-program":
         username = self._auth_username()
         if not username:
           self._send_json(401, {"ok": False, "message": "Unauthorized"})
@@ -725,7 +733,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "program": program, "state": users[username]["state"]})
         return
 
-      if self.path == "/api/save-progress":
+      if parsed_path == "/api/save-progress":
         username = self._auth_username()
         if not username:
           self._send_json(401, {"ok": False, "message": "Unauthorized"})
@@ -749,7 +757,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True})
         return
 
-      if self.path == "/api/logout":
+      if parsed_path == "/api/logout":
         auth = self.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
         if token and token in SESSIONS:
@@ -762,7 +770,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(401, {"ok": False, "message": "Unauthorized"})
         return
 
-      if self.path == "/api/admin/change-password":
+      if parsed_path == "/api/admin/change-password":
         body = read_json_body(self) or {}
         current_password = str(body.get("current_password", ""))
         new_password = str(body.get("new_password", ""))
@@ -780,7 +788,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True})
         return
 
-      if self.path == "/api/admin/rename-student":
+      if parsed_path == "/api/admin/rename-student":
         body = read_json_body(self) or {}
         old_username = str(body.get("old_username", "")).strip().lower()
         new_username = str(body.get("new_username", "")).strip().lower()
@@ -806,7 +814,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True, "username": new_username})
         return
 
-      if self.path == "/api/admin/change-student-password":
+      if parsed_path == "/api/admin/change-student-password":
         body = read_json_body(self) or {}
         target_username = str(body.get("username", "")).strip().lower()
         new_password = str(body.get("new_password", ""))
@@ -831,7 +839,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True})
         return
 
-      if self.path == "/api/admin/delete-student":
+      if parsed_path == "/api/admin/delete-student":
         body = read_json_body(self) or {}
         target_username = str(body.get("username", "")).strip().lower()
         if len(target_username) < 3:
@@ -850,7 +858,7 @@ class handler(BaseHTTPRequestHandler):
         self._send_json(200, {"ok": True})
         return
 
-      if self.path == "/api/admin/logout":
+      if parsed_path == "/api/admin/logout":
         auth = self.headers.get("Authorization", "")
         token = auth.removeprefix("Bearer ").strip() if auth.startswith("Bearer ") else ""
         if token and token in ADMIN_SESSIONS:
@@ -1698,7 +1706,14 @@ def build_admin_html() -> str:
     }
 
     async function loadStats() {
-      const resp = await fetch('/api/admin/stats', { headers: authHeaders() }).then(r => r.json());
+      const res = await fetch('/api/admin/stats', { headers: authHeaders() });
+      if (res.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        window.location.href = '/admin/login.html';
+        return;
+      }
+      const resp = await res.json();
       if (resp.ok) {
         document.getElementById('stat-total').textContent = resp.total_students;
         document.getElementById('stat-program').textContent = resp.with_program;
@@ -1706,7 +1721,14 @@ def build_admin_html() -> str:
     }
 
     async function loadStudents() {
-      const resp = await fetch('/api/admin/students', { headers: authHeaders() }).then(r => r.json());
+      const res = await fetch('/api/admin/students', { headers: authHeaders() });
+      if (res.status === 401) {
+        localStorage.removeItem('admin_token');
+        localStorage.removeItem('admin_username');
+        window.location.href = '/admin/login.html';
+        return;
+      }
+      const resp = await res.json();
       if (!resp.ok) return;
       studentsCache = resp.students || [];
       renderStudents();
